@@ -29,7 +29,10 @@ box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
 .status-red{background:#ffe7e7;color:#c51f1f;padding:5px 10px;border-radius:999px;font-weight:700}
 .status-gray{background:#eef1f5;color:#4b5563;padding:5px 10px;border-radius:999px;font-weight:700}
 .small{font-size:.88rem;color:#64748b}
-.app-title{font-size:2rem;font-weight:800;line-height:1.35;padding:.20rem 0 .30rem 0;margin:0;overflow:visible;color:#1f2937}
+.app-title{font-size:2rem;font-weight:800;line-height:1.5;padding:.45rem 0 .45rem 0;margin:0;overflow:visible;color:#1f2937}
+/* Fix Streamlit page titles with CJK text / emoji being vertically clipped */
+div[data-testid="stHeadingWithActionElements"]{overflow:visible!important;padding-top:.30rem!important;padding-bottom:.30rem!important;}
+div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;padding-top:.18rem!important;padding-bottom:.22rem!important;margin-top:0!important;margin-bottom:.35rem!important;overflow:visible!important;}
 @media(max-width:768px){
  .block-container{padding-left:.7rem;padding-right:.7rem;padding-top:.5rem}
  [data-testid="stSidebar"]{min-width:220px;max-width:220px}
