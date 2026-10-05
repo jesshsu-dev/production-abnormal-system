@@ -33,6 +33,23 @@ box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
 /* Fix Streamlit page titles with CJK text / emoji being vertically clipped */
 div[data-testid="stHeadingWithActionElements"]{overflow:visible!important;padding-top:.30rem!important;padding-bottom:.30rem!important;}
 div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;padding-top:.18rem!important;padding-bottom:.22rem!important;margin-top:0!important;margin-bottom:.35rem!important;overflow:visible!important;}
+
+.page-title-fixed{
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:4.2rem!important;
+  box-sizing:border-box!important;
+  font-family:Arial, "Microsoft JhengHei", "Noto Sans TC", sans-serif!important;
+  font-size:2.45rem!important;
+  font-weight:800!important;
+  line-height:1.65!important;
+  padding:.40rem 0 .50rem .10rem!important;
+  margin:0 0 .35rem 0!important;
+  overflow:visible!important;
+  white-space:normal!important;
+  color:#1f2937!important;
+}
 @media(max-width:768px){
  .block-container{padding-left:.7rem;padding-right:.7rem;padding-top:.5rem}
  [data-testid="stSidebar"]{min-width:220px;max-width:220px}
@@ -41,6 +58,14 @@ div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;pad
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+def page_title(text):
+    # Custom HTML title avoids Streamlit heading containers clipping CJK glyphs.
+    st.markdown(
+        f"<div class='page-title-fixed'>{text}</div>",
+        unsafe_allow_html=True,
+    )
 
 MAIN_CAUSES = ["人","機","料","法","測","環"]
 CAUSE_CATEGORIES = ["人員異常","文件異常","物料異常","設備異常","流程異常","環境異常","設計異常"]
@@ -194,7 +219,7 @@ def get_incident(cli, no):
 
 
 def home_page(cli):
-    st.title("🏠 首頁總覽")
+    page_title("🏠 首頁總覽")
     rows = fetch_incidents(cli)
     today = datetime.now(TZ).date()
     waiting=blue=yellow=red=today_count=0
@@ -226,7 +251,7 @@ def home_page(cli):
 
 
 def report_page(cli, profile):
-    st.title("🚨 異常通報")
+    page_title("🚨 異常通報")
     st.caption("送出後由 Supabase 自動產生異常編號，並開始計算未接收時間。")
     with st.form("report_form", clear_on_submit=True):
         c1,c2=st.columns(2)
@@ -263,7 +288,7 @@ def report_page(cli, profile):
 
 
 def receive_page(cli, profile):
-    st.title("📥 異常接收")
+    page_title("📥 異常接收")
     rows=cli.table("incidents").select("*").is_("receive_time","null").eq("process_progress","待受理").order("report_time").execute().data or []
     if not rows:
         st.success("目前沒有待接收案件。"); return
@@ -288,7 +313,7 @@ def receive_page(cli, profile):
 
 
 def reply_page(cli, profile):
-    st.title("↩️ 異常回覆")
+    page_title("↩️ 異常回覆")
     rows=cli.table("incidents").select("*").eq("process_progress","處理中").is_("reply_time","null").order("receive_time").execute().data or []
     if not rows:
         st.success("目前沒有待回覆案件。"); return
@@ -326,7 +351,7 @@ def reply_page(cli, profile):
 
 
 def close_page(cli, profile):
-    st.title("✅ 異常結案")
+    page_title("✅ 異常結案")
     rows=cli.table("incidents").select("*").eq("process_progress","待確認").order("reply_time").execute().data or []
     if not rows:
         st.success("目前沒有待結案案件。"); return
@@ -351,7 +376,7 @@ def close_page(cli, profile):
 
 
 def search_page(cli):
-    st.title("🔎 關鍵查詢")
+    page_title("🔎 關鍵查詢")
     c1,c2,c3=st.columns(3)
     keyword=c1.text_input("關鍵字",placeholder="異常編號/工單/機種/料號/人員")
     progress=c2.selectbox("處理進度",["全部"]+PROGRESS)
@@ -378,7 +403,7 @@ def search_page(cli):
 
 
 def history_page(cli):
-    st.title("📋 查詢紀錄")
+    page_title("📋 查詢紀錄")
     rows=fetch_incidents(cli)
     if not rows: st.info("尚無資料。"); return
     no=st.selectbox("異常編號",[r["abnormal_no"] for r in rows])
@@ -410,7 +435,7 @@ def history_page(cli):
 
 
 def stats_page(cli):
-    st.title("📊 異常統計")
+    page_title("📊 異常統計")
     df=pd.DataFrame(fetch_incidents(cli))
     if df.empty: st.info("尚無資料。"); return
     c1,c2,c3,c4=st.columns(4)
@@ -425,7 +450,7 @@ def stats_page(cli):
 
 
 def admin_page(cli, profile):
-    st.title("⚙️ 系統管理")
+    page_title("⚙️ 系統管理")
     st.subheader("五級未接收催辦規則")
     rules=cli.table("notification_rules").select("*").order("level").execute().data or []
     rdf=pd.DataFrame(rules)
