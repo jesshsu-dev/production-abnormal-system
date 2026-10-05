@@ -35,20 +35,30 @@ div[data-testid="stHeadingWithActionElements"]{overflow:visible!important;paddin
 div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;padding-top:.18rem!important;padding-bottom:.22rem!important;margin-top:0!important;margin-bottom:.35rem!important;overflow:visible!important;}
 
 .page-title-fixed{
-  display:block!important;
+  display:flex!important;
+  align-items:center!important;
   width:100%!important;
-  height:auto!important;
-  min-height:4.2rem!important;
+  min-height:72px!important;
   box-sizing:border-box!important;
-  font-family:Arial, "Microsoft JhengHei", "Noto Sans TC", sans-serif!important;
-  font-size:2.45rem!important;
+  font-size:36px!important;
   font-weight:800!important;
-  line-height:1.65!important;
-  padding:.40rem 0 .50rem .10rem!important;
-  margin:0 0 .35rem 0!important;
+  line-height:60px!important;
+  padding:10px 0 2px 4px!important;
+  margin:0 0 10px 0!important;
   overflow:visible!important;
   white-space:normal!important;
   color:#1f2937!important;
+}
+.page-title-fixed .title-emoji{
+  display:inline-block!important;
+  line-height:60px!important;
+  margin-right:12px!important;
+}
+.page-title-fixed .title-text{
+  display:inline-block!important;
+  line-height:60px!important;
+  padding-top:8px!important;
+  overflow:visible!important;
 }
 @media(max-width:768px){
  .block-container{padding-left:.7rem;padding-right:.7rem;padding-top:.5rem}
@@ -61,9 +71,15 @@ div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;pad
 
 
 def page_title(text):
-    # Custom HTML title avoids Streamlit heading containers clipping CJK glyphs.
+    # Separate emoji and text, then shift the CJK text downward inside a tall line box.
+    # This avoids Chromium/Streamlit clipping the top edge of Traditional Chinese glyphs.
+    parts = text.split(" ", 1)
+    if len(parts) == 2:
+        emoji, label = parts
+    else:
+        emoji, label = "", text
     st.markdown(
-        f"<div class='page-title-fixed'>{text}</div>",
+        f"<div class='page-title-fixed'><span class='title-emoji'>{emoji}</span><span class='title-text'>{label}</span></div>",
         unsafe_allow_html=True,
     )
 
