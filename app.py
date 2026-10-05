@@ -29,6 +29,7 @@ box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
 .status-red{background:#ffe7e7;color:#c51f1f;padding:5px 10px;border-radius:999px;font-weight:700}
 .status-gray{background:#eef1f5;color:#4b5563;padding:5px 10px;border-radius:999px;font-weight:700}
 .small{font-size:.88rem;color:#64748b}
+.app-title{font-size:2rem;font-weight:800;line-height:1.35;padding:.20rem 0 .30rem 0;margin:0;overflow:visible;color:#1f2937}
 @media(max-width:768px){
  .block-container{padding-left:.7rem;padding-right:.7rem;padding-top:.5rem}
  [data-testid="stSidebar"]{min-width:220px;max-width:220px}
@@ -141,7 +142,7 @@ def can_admin(role):
 
 
 def login_view():
-    st.markdown(f"## 🚨 {APP_TITLE}")
+    st.markdown(f'<div class="app-title">🚨 {APP_TITLE}</div>', unsafe_allow_html=True)
     st.caption("V1.1 Enterprise｜Streamlit + Supabase｜電腦 / 手機皆可登入")
     c1,c2,c3 = st.columns([1,1.3,1])
     with c2:
@@ -493,11 +494,20 @@ def main():
     if page in ["首頁總覽","即時訊息"]: home_page(cli)
     elif page=="異常通報": report_page(cli,profile)
     elif page=="異常接收":
-        receive_page(cli,profile) if can_handle(role) else st.error("此功能限工程／品保相關人員。")
+        if can_handle(role):
+            receive_page(cli, profile)
+        else:
+            st.error("此功能限工程／品保相關人員。")
     elif page=="異常回覆":
-        reply_page(cli,profile) if can_handle(role) else st.error("此功能限工程／品保相關人員。")
+        if can_handle(role):
+            reply_page(cli, profile)
+        else:
+            st.error("此功能限工程／品保相關人員。")
     elif page=="異常結案":
-        close_page(cli,profile) if can_close(role) else st.error("此功能限品保人員。")
+        if can_close(role):
+            close_page(cli, profile)
+        else:
+            st.error("此功能限品保人員。")
     elif page=="關鍵查詢": search_page(cli)
     elif page=="查詢紀錄": history_page(cli)
     elif page=="異常統計": stats_page(cli)
