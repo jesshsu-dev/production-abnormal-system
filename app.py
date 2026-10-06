@@ -29,7 +29,33 @@ box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:10px}
 .status-red{background:#ffe7e7;color:#c51f1f;padding:5px 10px;border-radius:999px;font-weight:700}
 .status-gray{background:#eef1f5;color:#4b5563;padding:5px 10px;border-radius:999px;font-weight:700}
 .small{font-size:.88rem;color:#64748b}
-.app-title{font-size:2rem;font-weight:800;line-height:1.5;padding:.45rem 0 .45rem 0;margin:0;overflow:visible;color:#1f2937}
+.app-title{
+  display:flex!important;
+  align-items:center!important;
+  min-height:82px!important;
+  box-sizing:border-box!important;
+  font-size:32px!important;
+  font-weight:800!important;
+  line-height:1.45!important;
+  padding:16px 0 14px 4px!important;
+  margin:0!important;
+  overflow:visible!important;
+  white-space:normal!important;
+  color:#1f2937!important;
+}
+.app-title .title-emoji{
+  display:inline-flex!important;
+  align-items:center!important;
+  line-height:1.45!important;
+  margin-right:12px!important;
+  overflow:visible!important;
+}
+.app-title .title-text{
+  display:inline-block!important;
+  line-height:1.45!important;
+  padding:6px 0 8px 0!important;
+  overflow:visible!important;
+}
 /* Fix Streamlit page titles with CJK text / emoji being vertically clipped */
 div[data-testid="stHeadingWithActionElements"]{overflow:visible!important;padding-top:.30rem!important;padding-bottom:.30rem!important;}
 div[data-testid="stHeadingWithActionElements"] h1{line-height:1.45!important;padding-top:.18rem!important;padding-bottom:.22rem!important;margin-top:0!important;margin-bottom:.35rem!important;overflow:visible!important;}
@@ -186,7 +212,10 @@ def can_admin(role):
 
 
 def login_view():
-    st.markdown(f'<div class="app-title">🚨 {APP_TITLE}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="app-title"><span class="title-emoji">🚨</span><span class="title-text">{APP_TITLE}</span></div>',
+        unsafe_allow_html=True
+    )
     st.caption("V1.1 Enterprise｜Streamlit + Supabase｜電腦 / 手機皆可登入")
     c1,c2,c3 = st.columns([1,1.3,1])
     with c2:
