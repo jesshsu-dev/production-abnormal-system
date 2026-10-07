@@ -294,6 +294,114 @@ def home_page(cli):
             st.write(f"{r.get('model') or '-'}｜{r['abnormal_type']}｜{r.get('abnormal_desc') or '-'}{wait}")
         with c4: st.caption(f"通知 {level}/5｜{target}")
 
+    # ===== 首頁：異常機種柏拉圖 =====
+    st.markdown("---")
+    st.subheader("📊 異常機種柏拉圖")
+
+    pareto_df = pd.DataFrame(rows)
+    if pareto_df.empty or "model" not in pareto_df.columns:
+        st.info("目前沒有可供柏拉圖統計的生產機種資料。")
+    else:
+        # 期間與異常類型篩選
+        f1, f2 = st.columns([1, 1])
+        period = f1.selectbox(
+            "統計期間", ["全部", "近30天", "近90天", "今年"],
+            key="home_pareto_period"
+        )
+        type_options = ["全部"]
+        if "abnormal_type" in pareto_df.columns:
+            type_options += sorted([str(x) for x in pareto_df["abnormal_type"].dropna().unique() if str(x).strip()])
+        selected_type = f2.selectbox("異常類型", type_options, key="home_pareto_type")
+
+        # 時間篩選
+        if "report_time" in pareto_df.columns:
+            pareto_df["_report_dt"] = pd.to_datetime(pareto_df["report_time"], errors="coerce", utc=True)
+            now_ts = pd.Timestamp.now(tz="UTC")
+            if period == "近30天":
+                pareto_df = pareto_df[pareto_df["_report_dt"] >= now_ts - pd.Timedelta(days=30)]
+            elif period == "近90天":
+                pareto_df = pareto_df[pareto_df["_report_dt"] >= now_ts - pd.Timedelta(days=90)]
+            elif period == "今年":
+                local_year = datetime.now(TZ).year
+                pareto_df = pareto_df[pareto_df["_report_dt"].dt.tz_convert(TZ).dt.year == local_year]
+
+        if selected_type != "全部" and "abnormal_type" in pareto_df.columns:
+            pareto_df = pareto_df[pareto_df["abnormal_type"].astype(str) == selected_type]
+
+        # 排除空白機種並統計件數
+        pareto_df["model"] = pareto_df["model"].fillna("").astype(str).str.strip()
+        pareto_df = pareto_df[pareto_df["model"] != ""]
+
+        if pareto_df.empty:
+            st.info("目前篩選條件下沒有異常資料。")
+        else:
+            p = (pareto_df.groupby("model").size().reset_index(name="count")
+                 .sort_values(["count", "model"], ascending=[False, True])
+                 .reset_index(drop=True))
+            p["order"] = range(1, len(p) + 1)
+            p["cum_pct"] = p["count"].cumsum() / p["count"].sum() * 100
+            p["cum_label"] = p["cum_pct"].round(0).astype(int).astype(str) + "%"
+
+            # Vega-Lite 雙軸柏拉圖：左軸異常件數、右軸累積百分比
+            spec = {
+                "height": 420,
+                "data": {"values": p.to_dict("records")},
+                "encoding": {
+                    "x": {
+                        "field": "model", "type": "nominal",
+                        "sort": {"field": "order", "order": "ascending"},
+                        "axis": {"title": "生產機種", "labelAngle": -65, "labelLimit": 160}
+                    }
+                },
+                "layer": [
+                    {
+                        "mark": {"type": "bar", "color": "#67c5e8", "tooltip": True},
+                        "encoding": {
+                            "y": {"field": "count", "type": "quantitative", "axis": {"title": "異常件數", "tickMinStep": 1}},
+                            "tooltip": [
+                                {"field": "model", "type": "nominal", "title": "生產機種"},
+                                {"field": "count", "type": "quantitative", "title": "異常件數"}
+                            ]
+                        }
+                    },
+                    {
+                        "mark": {"type": "text", "dy": -8, "fontSize": 13, "fontWeight": "bold", "color": "#111827"},
+                        "encoding": {
+                            "y": {"field": "count", "type": "quantitative", "axis": None},
+                            "text": {"field": "count", "type": "quantitative"}
+                        }
+                    },
+                    {
+                        "mark": {"type": "line", "point": True, "strokeWidth": 2.5, "color": "#e60000"},
+                        "encoding": {
+                            "y": {
+                                "field": "cum_pct", "type": "quantitative",
+                                "scale": {"domain": [0, 100]},
+                                "axis": {"title": "累積百分比", "orient": "right", "format": ".0f", "values": [0,10,20,30,40,50,60,70,80,90,100], "labelExpr": "datum.value + '%'", "titleColor": "#e60000", "labelColor": "#e60000"}
+                            },
+                            "tooltip": [
+                                {"field": "model", "type": "nominal", "title": "生產機種"},
+                                {"field": "cum_pct", "type": "quantitative", "title": "累積百分比", "format": ".1f"}
+                            ]
+                        }
+                    },
+                    {
+                        "mark": {"type": "text", "dy": -12, "fontSize": 12, "fontWeight": "bold", "color": "#e60000"},
+                        "encoding": {
+                            "y": {"field": "cum_pct", "type": "quantitative", "scale": {"domain": [0, 100]}, "axis": None},
+                            "text": {"field": "cum_label", "type": "nominal"}
+                        }
+                    }
+                ],
+                "resolve": {"scale": {"y": "independent"}},
+                "config": {
+                    "view": {"stroke": None},
+                    "axis": {"gridColor": "#e5e7eb", "labelFontSize": 12, "titleFontSize": 13}
+                }
+            }
+            st.vega_lite_chart(p, spec, use_container_width=True)
+            st.caption(f"共 {int(p['count'].sum())} 件異常｜{len(p)} 個生產機種｜依異常件數由高至低排列")
+
 
 def report_page(cli, profile):
     page_title("🚨 異常通報")
