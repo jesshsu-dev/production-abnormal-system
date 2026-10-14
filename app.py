@@ -1,4 +1,7 @@
 import os
+import io
+import uuid
+from PIL import Image, ImageOps, UnidentifiedImageError
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -10,7 +13,7 @@ APP_TITLE = "生產異常通報系統"
 TZ = ZoneInfo("Asia/Taipei")
 
 st.set_page_config(
-    page_title=f"{APP_TITLE} V1.1 Enterprise",
+    page_title=f"{APP_TITLE} V1.2 Enterprise",
     page_icon="🚨",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -216,7 +219,7 @@ def login_view():
         f'<div class="app-title"><span class="title-emoji">🚨</span><span class="title-text">{APP_TITLE}</span></div>',
         unsafe_allow_html=True
     )
-    st.caption("V1.1 Enterprise｜Streamlit + Supabase｜電腦 / 手機皆可登入")
+    st.caption("V1.2 Enterprise｜Streamlit + Supabase｜電腦 / 手機皆可登入")
     c1,c2,c3 = st.columns([1,1.3,1])
     with c2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -403,6 +406,80 @@ def home_page(cli):
             st.caption(f"共 {int(p['count'].sum())} 件異常｜{len(p)} 個生產機種｜依異常件數由高至低排列")
 
 
+PHOTO_BUCKET = "incident-photos"
+MAX_PHOTO_BYTES = 300 * 1024
+
+
+def compress_photo(uploaded):
+    """Convert an uploaded image into a JPEG <= 300 KiB."""
+    if uploaded.size > 20 * 1024 * 1024:
+        raise ValueError("原始照片不得超過 20 MB")
+    try:
+        with Image.open(uploaded) as original:
+            img = ImageOps.exif_transpose(original)
+            img = img.convert("RGB")
+            img.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+            for dimension in (1600, 1280, 1024, 800, 640, 480, 320):
+                candidate = img.copy()
+                candidate.thumbnail((dimension, dimension), Image.Resampling.LANCZOS)
+                for quality in (82, 72, 62, 50, 40, 30, 20):
+                    out = io.BytesIO()
+                    candidate.save(out, format="JPEG", quality=quality, optimize=True)
+                    if out.tell() <= MAX_PHOTO_BYTES:
+                        return out.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError(f"無法處理照片：{uploaded.name}") from exc
+    raise ValueError(f"照片無法壓縮至 300 KB：{uploaded.name}")
+
+
+def upload_photos(cli, incident_id, files):
+    """Upload to a private bucket; return object paths (not public URLs)."""
+    paths = []
+    try:
+        for uploaded in files:
+            payload = compress_photo(uploaded)
+            path = f"{incident_id}/{uuid.uuid4().hex}.jpg"
+            cli.storage.from_(PHOTO_BUCKET).upload(
+                path=path,
+                file=payload,
+                file_options={"content-type": "image/jpeg", "upsert": "false"},
+            )
+            paths.append(path)
+        return paths
+    except Exception:
+        for path in paths:
+            try:
+                cli.storage.from_(PHOTO_BUCKET).remove([path])
+            except Exception:
+                pass
+        raise
+
+
+def show_incident_photos(cli, row, title="異常照片"):
+    paths = row.get("photo_urls") or []
+    if isinstance(paths, str):
+        import json
+        try:
+            paths = json.loads(paths)
+        except ValueError:
+            paths = []
+    if not paths:
+        return
+    st.markdown(f"**📷 {title}（{len(paths)} 張）**")
+    cols = st.columns(min(3, len(paths)))
+    for idx, path in enumerate(paths):
+        try:
+            # Signed URLs are short-lived; no public-read policy is required.
+            result = cli.storage.from_(PHOTO_BUCKET).create_signed_url(path, 300)
+            url = result.get("signedURL") or result.get("signedUrl") or result.get("signed_url")
+            if not url:
+                raise ValueError("無法產生照片存取連結")
+            with cols[idx % len(cols)]:
+                st.image(url, caption=f"照片 {idx + 1}", use_container_width=True)
+        except Exception as exc:
+            st.warning(f"照片 {idx + 1} 無法讀取：{exc}")
+
+
 def report_page(cli, profile):
     page_title("🚨 異常通報")
     st.caption("送出後由 Supabase 自動產生異常編號，並開始計算未接收時間。")
@@ -420,6 +497,7 @@ def report_page(cli, profile):
             st.text_input("通報人員",value=profile["display_name"],disabled=True)
             st.text_input("通報時間",value=datetime.now(TZ).strftime("%Y/%m/%d %H:%M"),disabled=True)
         abnormal_desc=st.text_area("異常描述 *",height=130)
+        photos=st.file_uploader("📷 異常照片（可多選，單張原始檔上限 20 MB）", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key="report_photos")
         submit=st.form_submit_button("送出異常通報",type="primary",use_container_width=True)
 
     if submit:
@@ -434,8 +512,17 @@ def report_page(cli, profile):
                 "process_progress":"待受理"
             }
             res=cli.table("incidents").insert(data).execute()
-            no=res.data[0]["abnormal_no"] if res.data else "(已建立)"
-            st.success(f"異常通報完成，異常編號：{no}")
+            created = res.data[0] if res.data else None
+            no = created["abnormal_no"] if created else "(已建立)"
+            if photos and created:
+                try:
+                    paths = upload_photos(cli, created["id"], photos)
+                    cli.table("incidents").update({"photo_urls": paths}).eq("id", created["id"]).execute()
+                    st.success(f"異常通報完成，異常編號：{no}，已上傳 {len(paths)} 張照片")
+                except Exception as photo_error:
+                    st.warning(f"異常通報已建立（{no}），但照片上傳或寫入失敗：{photo_error}。請勿重複通報，先檢查 Storage 權限與 photo_urls 欄位。")
+            else:
+                st.success(f"異常通報完成，異常編號：{no}")
         except Exception as e:
             st.error(f"新增失敗：{e}")
 
@@ -455,6 +542,7 @@ def receive_page(cli, profile):
     <b>通報時間：</b>{local_text(row['report_time'])}<br>
     <b>異常描述：</b>{row.get('abnormal_desc') or '-'}
     </div>""",unsafe_allow_html=True)
+    show_incident_photos(cli, row)
     if st.button("確認接收",type="primary",use_container_width=True):
         try:
             cli.table("incidents").update({
@@ -477,6 +565,7 @@ def reply_page(cli, profile):
     <b>機種：</b>{row.get('model') or '-'}<br><b>接收人員：</b>{row.get('receiver_name') or '-'}　
     <b>接收時間：</b>{local_text(row.get('receive_time'))}<br><b>異常描述：</b>{row.get('abnormal_desc') or '-'}
     </div>""",unsafe_allow_html=True)
+    show_incident_photos(cli, row)
     with st.form("reply_form"):
         c1,c2=st.columns(2)
         with c1:
@@ -517,6 +606,7 @@ def close_page(cli, profile):
     <b>次類異常：</b>{r.get('sub_cause') or '-'}<br><b>總不良數：</b>{r.get('total_defect_qty') or 0}<br>
     <b>原因分析：</b>{r.get('root_cause') or '-'}
     </div>""",unsafe_allow_html=True)
+    show_incident_photos(cli, r)
     ok=st.checkbox("品保已確認內容正確，可結案")
     if st.button("異常結案",type="primary",use_container_width=True,disabled=not ok):
         try:
@@ -578,6 +668,7 @@ def history_page(cli):
 <div class="card"><b>④ 異常結案</b><br>結案人員：{r.get('closer_name') or '-'}<br>
 結案時間：{local_text(r.get('close_time'))}<br>狀態：{r['process_progress']}</div>""",unsafe_allow_html=True)
 
+    show_incident_photos(cli, r)
     st.subheader("Email / LINE 催辦紀錄")
     logs=cli.table("notification_logs").select("*").eq("incident_id",r["id"]).order("level").execute().data or []
     if logs:
