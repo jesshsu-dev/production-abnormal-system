@@ -266,6 +266,74 @@ def get_incident(cli, no):
     return r.data
 
 
+
+def realtime_page(cli):
+    """當日異常處理監控，與首頁總覽分開。"""
+    page_title("📨 即時訊息")
+    now = datetime.now(TZ)
+    st.caption(f"台灣時間：{now:%Y/%m/%d %H:%M}｜當日異常狀況（重新整理頁面取得最新資料）")
+    rows = fetch_incidents(cli)
+    today_rows = [r for r in rows if r.get("report_time") and iso_to_local(r["report_time"]).date() == now.date()]
+    pending_rows = [r for r in rows if r.get("report_time") and iso_to_local(r["report_time"]).date() < now.date() and r.get("process_progress") != "已結案"]
+
+    statuses = ["待受理", "處理中", "待確認", "已結案"]
+    counts = {status: sum(r.get("process_progress") == status for r in today_rows) for status in statuses}
+    cols = st.columns(5)
+    for col, (label, count) in zip(cols, [("今日異常總數", len(today_rows))] + [(s, counts[s]) for s in statuses]):
+        col.metric(label, count)
+
+    st.subheader("今日異常處理狀況")
+    if today_rows:
+        chart_df = pd.DataFrame({"處理狀態": statuses, "筆數": [counts[s] for s in statuses]}).set_index("處理狀態")
+        st.bar_chart(chart_df)
+    else:
+        st.info("今日尚無異常通報。")
+
+    st.subheader("今日異常通報明細")
+    f1, f2 = st.columns(2)
+    progress = f1.selectbox("處理狀態", ["全部"] + statuses, key="realtime_progress")
+    keyword = f2.text_input("搜尋異常編號／機種／工單", key="realtime_keyword")
+    filtered = [r for r in today_rows if progress == "全部" or r.get("process_progress") == progress]
+    if keyword.strip():
+        k = keyword.strip().lower()
+        filtered = [r for r in filtered if any(k in str(r.get(field) or "").lower() for field in ("abnormal_no", "model", "work_order"))]
+    if filtered:
+        display = []
+        for r in filtered:
+            status, _, level, _ = escalation_info(r)
+            display.append({
+                "異常編號": r.get("abnormal_no", "-"),
+                "通報時間": local_text(r.get("report_time")),
+                "生產機種": r.get("model") or "-",
+                "工單單號": r.get("work_order") or "-",
+                "異常類型": r.get("abnormal_type") or "-",
+                "異常描述": r.get("abnormal_desc") or "-",
+                "通報人員": r.get("reporter_name") or "-",
+                "接收人員": r.get("receiver_name") or "-",
+                "處理狀態": r.get("process_progress") or "-",
+                "未接收等待(分鐘)": elapsed_minutes(r["report_time"]) if not r.get("receive_time") else 0,
+                "催辦狀態": status if not r.get("receive_time") else "已停止未接收催辦",
+                "通知級數": level if not r.get("receive_time") else 0,
+            })
+        st.dataframe(pd.DataFrame(display), use_container_width=True, hide_index=True)
+        st.caption(f"符合篩選條件：{len(filtered)} 筆。已結案案件仍保留於當日明細。")
+    else:
+        st.info("目前沒有符合條件的當日異常。")
+
+    st.subheader(f"跨日未結案（{len(pending_rows)} 筆）")
+    if pending_rows:
+        st.dataframe(pd.DataFrame([{
+            "異常編號": r.get("abnormal_no", "-"),
+            "通報時間": local_text(r.get("report_time")),
+            "生產機種": r.get("model") or "-",
+            "異常類型": r.get("abnormal_type") or "-",
+            "處理狀態": r.get("process_progress") or "-",
+            "負責人": r.get("receiver_name") or "尚未接收",
+        } for r in pending_rows]), use_container_width=True, hide_index=True)
+    else:
+        st.success("目前沒有跨日未結案案件。")
+
+
 def home_page(cli):
     page_title("🏠 首頁總覽")
     rows = fetch_incidents(cli)
@@ -763,7 +831,8 @@ def main():
         st.markdown("---")
         if st.button("登出",use_container_width=True): logout(cli)
 
-    if page in ["首頁總覽","即時訊息"]: home_page(cli)
+    if page=="首頁總覽": home_page(cli)
+    elif page=="即時訊息": realtime_page(cli)
     elif page=="異常通報": report_page(cli,profile)
     elif page=="異常接收":
         if can_handle(role):
